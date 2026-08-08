@@ -9,6 +9,13 @@ fallback) are optional.
 engines/AI, backend, testing, findings, and the prioritised backlog.
 
 - `three-floor-chess.html` — the game.
+- `index.html` — redirect to the game (so `/` works on a static host).
+- `manifest.webmanifest`, `sw.js`, `icons/` — PWA layer: installable on phones,
+  works offline once visited. The service worker only registers over http(s);
+  opening the file from disk still works unchanged.
+- `mobile/` — Capacitor wrapper for native Android/iOS builds (see `mobile/README.md`).
+- `tools/serve.ps1` — zero-dependency local dev server:
+  `powershell -File tools\serve.ps1` then open http://localhost:8420/
 - `PROJECT.md` — project spec / handoff (read this first).
 - `SUPABASE-SETUP.md` — optional accounts backend: create project, disable email
   confirmation, run the schema SQL, paste keys into the `SUPABASE_CONFIG` block.
