@@ -355,6 +355,14 @@ keep a single-file build target — offline-in-one-file is a core property.
 
 ## 18. Changelog
 
+- **2026-08-10** — Variant AI initiative overhaul (backlog #1): evalState gains
+  progressive pawn-advancement (PADV table), a space term, officer proximity-to-
+  generals/king hunting terms, all scaled by an urgency factor that grows with the
+  no-progress clock (anti-draw). Fixed `clone()` dropping `plyClock` (made the new
+  eval NaN inside search). Self-play at tier 800 went from 0 captures / 100%
+  120-ply draws to full decisive games (e.g. checkmate turn 53; 30–40 captures).
+  Testing gotcha documented: `__game.aiPlayTurn(color,diff)` is a wrapper over the
+  UI's global `S` — set `__game.S` first or call the page-global `aiPlayTurn(st,…)`.
 - **This session** — White/Black/Random side picker across all modes; setup board previews
   for Classic/Pawn Race; social backend switched to Supabase (with local fallback);
   pawn-shield fix in `buildArmy`; balance study concluding self-play is a forced draw due to

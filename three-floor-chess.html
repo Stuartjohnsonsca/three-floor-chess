@@ -553,7 +553,7 @@ function clone(st){
     pieces:st.pieces, turn:st.turn, reserveKing:st.reserveKing, generalsAlive:st.generalsAlive,
     kingOut:st.kingOut, ep:st.ep, floorsActed:st.floorsActed, movedThisTurn:st.movedThisTurn,
     actionsThisTurn:st.actionsThisTurn, mustPlace:st.mustPlace, over:st.over,
-    captured:st.captured, last:st.last
+    captured:st.captured, last:st.last, plyClock:st.plyClock
   }));
   return n;
 }
@@ -804,6 +804,13 @@ function evaluateTurnStart(st,color){
 function evalState(st,color){
   // positive = good for `color`
   let s=0;
+  // attack targets: each side's generals + king — the pieces the win runs through
+  const tg={w:[],b:[]};
+  for(const p of st.pieces) if(p.type==='G'||p.type==='K') tg[p.color].push(p);
+  // initiative urgency: grows with the no-progress clock so the bot forces
+  // matters rather than shuffling into the 120-ply draw (1.0 → 2.5)
+  const urg=1+Math.min(1.5, (st.plyClock||0)/48);
+  const PADV=[0,10,28,48,72,100,134,0]; // progressive pawn-advancement bonus by rank steps
   for(const p of st.pieces){
     const sign=p.color===color?1:-1;
     let v=VAL[p.type]*100;
@@ -814,7 +821,24 @@ function evalState(st,color){
     v += cd*4;
     if(p.type==='P'){
       const adv = p.color==='w'?p.r:7-p.r;
-      v += adv*6;
+      v += PADV[adv]*urg;
+    }
+    // space: any non-royal piece standing in enemy territory
+    if(p.type!=='K' && p.type!=='G'){
+      const enemyHalf = p.color==='w' ? p.r>=4 : p.r<=3;
+      if(enemyHalf) v += 12*urg;
+    }
+    // officers hunt: close in on enemy generals/king; a floor away counts as
+    // 4 steps (climbing costs actions). A placed king is the prime target.
+    if(p.type==='N'||p.type==='B'||p.type==='R'||p.type==='Q'){
+      const en=tg[p.color==='w'?'b':'w'];
+      let best=99, kbest=99;
+      for(const t of en){
+        const d=Math.max(Math.abs(t.r-p.r),Math.abs(t.c-p.c))+4*Math.abs(t.floor-p.floor);
+        if(t.type==='K'){ if(d<kbest) kbest=d; } else if(d<best) best=d;
+      }
+      if(best<14)  v += (14-best)*1.5*urg;
+      if(kbest<14) v += (14-kbest)*5*urg;
     }
     // middle floor control is valuable
     if(p.floor===1) v+=6;
