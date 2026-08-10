@@ -453,6 +453,27 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   </div>
 </div>
 
+<style>
+/* online extras: chat + reconnect banner */
+#chatBox{position:fixed;right:14px;bottom:14px;width:250px;background:var(--panel);border:1px solid var(--line);border-radius:12px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden}
+#chatHead{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--panel2);font-size:13px;font-weight:600;cursor:pointer;user-select:none}
+#chatHead .unread{background:var(--accent);color:#08121f;border-radius:9px;padding:0 7px;font-size:11px;margin-left:6px}
+#chatLog{height:150px;overflow-y:auto;padding:8px 10px;font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+#chatLog .cm b{color:var(--accent)} #chatLog .cm.me b{color:var(--accent2)}
+#chatRow{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line)}
+#chatIn{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:6px 8px;font-size:12.5px;min-width:0}
+#chatSend{background:var(--accent);border:0;border-radius:8px;color:#08121f;font-weight:700;padding:0 12px;cursor:pointer}
+#chatBox.min #chatLog,#chatBox.min #chatRow{display:none}
+#netBanner{position:fixed;top:0;left:0;right:0;z-index:70;background:#5a3a10;color:#ffd9a0;border-bottom:1px solid #8a5a1a;padding:8px 14px;text-align:center;font-size:13.5px}
+@media (max-width:640px){ #chatBox{width:calc(100vw - 28px)} }
+</style>
+<div id="netBanner" class="hidden"><span id="netBannerText"></span></div>
+<div id="chatBox" class="hidden">
+  <div id="chatHead"><span>Chat<span class="unread hidden" id="chatUnread">0</span></span><span id="chatMin">—</span></div>
+  <div id="chatLog"></div>
+  <div id="chatRow"><input id="chatIn" maxlength="200" placeholder="Message…" autocomplete="off"><button id="chatSend">Send</button></div>
+</div>
+
 <div class="modal-bg" id="placeModal">
   <div class="modal">
     <h2>Your king is forced out!</h2>
@@ -464,6 +485,8 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   <div class="modal center">
     <div class="big" id="overTitle"></div>
     <p id="overText"></p>
+    <button class="btn primary" id="overRematch" style="margin-top:14px">Rematch</button>
+    <div class="msg hidden" id="rematchMsg" style="margin-top:8px"></div>
     <button class="btn primary" id="overNew" style="margin-top:14px">New game</button>
   </div>
 </div>
@@ -1602,6 +1625,7 @@ function updateStatus(){
 /* ----- Play interaction ----- */
 function onPlayClick(f,r,c){
   if(phase!=='play'||S.over) return;
+  if(netMode&&netLost) return;               // frozen while the opponent reconnects
   if(puzzleMode && puzBusy) return;
   if(placingHuman){ tryPlaceHuman(f,r,c); return; }
   if(S.turn!==myColor || awaitingRemote) return;
@@ -1671,7 +1695,7 @@ function postHuman(){
 }
 
 function humanEndTurn(){
-  if(S.turn!==myColor||S.over||awaitingRemote) return;
+  if(S.turn!==myColor||S.over||awaitingRemote||(netMode&&netLost)) return;
   if(S.actionsThisTurn<1||inCheck(S,myColor)||S.mustPlace||placingHuman) return;
   endTurn(S);
   selected=null; legalCache=[];
@@ -1929,6 +1953,9 @@ function showOver(){
     text=youWon?'You ran down the enemy king across the floors. Nicely done.':'Your king was cornered. Rematch?';
   }
   el('overTitle').textContent=title; el('overText').textContent=text;
+  el('overRematch').classList.toggle('hidden', !connAlive());
+  el('overRematch').disabled=false;
+  updateRematchUI();
   el('overModal').classList.add('show');
   if(netMode && window.TFCsocial && window.TFCsocial.isRated()){ try{ window.TFCsocial.onGameOver(o); }catch(e){} }
 }
@@ -2021,6 +2048,8 @@ if(el('sideSel')) el('sideSel').querySelectorAll('.d').forEach(d=>{ d.onclick=()
 
 function resetAll(){
   if(netMode && net){ try{ net.send({t:'resign'}); }catch(e){} try{ net.peer&&net.peer.destroy(); }catch(e){} }
+  clearNetTimers(); netLost=false; hideBanner(); chatShow(false);
+  rematchMine=false; rematchTheirs=false; el('rematchMsg').classList.add('hidden');
   S=newState(); uid=1; phase='setup'; selected=null; legalCache=[]; selPaletteType=null; placingHuman=false; pendingAfterPlace=null;
   netMode=false; net=null; awaitingRemote=false; iAmHost=false; iSentDeploy=false; oppDeploy=null; roomCode=null; myColor='w';
   sideChoice='w'; { const ss=el('sideSel'); if(ss) ss.querySelectorAll('.d').forEach(x=>x.classList.toggle('sel',x.dataset.s==='w')); }
@@ -2345,7 +2374,10 @@ function joinGame(code){
 }
 function bindConn(conn){
   net={peer:(conn.provider||(net&&net.peer)), conn, send:(m)=>{ try{conn.send(m);}catch(e){} }};
-  conn.on('open',()=>{ netMode=true; onConnected(); });
+  conn.on('open',()=>{
+    netMode=true;
+    if(netLost || phase==='play'){ handleReconnected(); } else { onConnected(); }
+  });
   conn.on('data',onNetMsg);
   conn.on('close',()=>onDisconnect());
   conn.on('error',()=>onDisconnect());
@@ -2369,6 +2401,7 @@ function onReady(){
 }
 function startOnlineGame(){
   woolgarVanish();
+  chatShow(true);
   for(const q of oppDeploy){ const p=mk(q.type,oppOf(),q.floor,q.r,q.c); p.fwd=!!q.fwd; S.pieces.push(p); }
   S.turn='w'; phase='play';
   el('setupView').classList.add('hidden'); el('playView').classList.remove('hidden');
@@ -2384,6 +2417,78 @@ function onNetMsg(m){
   else if(m.t==='place'){ applyRemotePlace(m); }
   else if(m.t==='end'){ applyRemoteEnd(); }
   else if(m.t==='resign'){ if(!S.over){ S.over={winner:myColor,reason:'resign'}; renderPlay(); showOver(); } }
+  else if(m.t==='chat'){ chatAdd(false, m.x); }
+  else if(m.t==='rematch'){ rematchTheirs=true; updateRematchUI(); maybeStartRematch(); }
+  else if(m.t==='sync'){ applySync(m); }
+}
+
+/* ----- in-game chat ----- */
+let chatUnseen=0;
+function chatAdd(mine, text){
+  text=String(text==null?'':text).slice(0,200);
+  if(!text) return;
+  const log=el('chatLog'); if(!log) return;
+  const d=document.createElement('div'); d.className='cm'+(mine?' me':'');
+  const b=document.createElement('b'); b.textContent=(mine?'You: ':'Them: ');
+  d.appendChild(b); d.appendChild(document.createTextNode(text));
+  log.appendChild(d); log.scrollTop=log.scrollHeight;
+  if(!mine && el('chatBox').classList.contains('min')){
+    chatUnseen++; const u=el('chatUnread'); u.textContent=chatUnseen; u.classList.remove('hidden');
+  }
+}
+function chatSendNow(){
+  const inp=el('chatIn'); const x=(inp.value||'').trim().slice(0,200);
+  if(!x || !net) return;
+  net.send({t:'chat',x}); chatAdd(true,x); inp.value='';
+}
+function chatShow(b){ el('chatBox').classList.toggle('hidden',!b); if(!b){ el('chatLog').innerHTML=''; chatUnseen=0; el('chatUnread').classList.add('hidden'); } }
+
+/* ----- rematch (same connection, colors swapped) ----- */
+let rematchMine=false, rematchTheirs=false;
+function connAlive(){ return !!(netMode && net && net.conn && net.conn.open); }
+function updateRematchUI(){
+  const msg=el('rematchMsg');
+  if(rematchTheirs && !rematchMine){ msg.textContent='Opponent wants a rematch!'; msg.classList.remove('hidden'); }
+  else if(rematchMine && !rematchTheirs){ msg.textContent='Rematch offered — waiting for opponent…'; msg.classList.remove('hidden'); }
+  else msg.classList.add('hidden');
+}
+function offerRematch(){
+  if(!connAlive()) return;
+  rematchMine=true; net.send({t:'rematch'});
+  el('overRematch').disabled=true;
+  updateRematchUI(); maybeStartRematch();
+}
+function maybeStartRematch(){
+  if(!(rematchMine && rematchTheirs)) return;
+  rematchMine=false; rematchTheirs=false;
+  myColor=other(myColor);                      // swap sides
+  S=newState(); iSentDeploy=false; oppDeploy=null;
+  selected=null; legalCache=[]; placingHuman=false; awaitingRemote=false; phase='setup';
+  el('overModal').classList.remove('show');
+  el('overRematch').disabled=false; el('rematchMsg').classList.add('hidden');
+  try{ if(view3D) exit3D(); }catch(e){}
+  el('playView').classList.add('hidden'); el('setupView').classList.remove('hidden');
+  el('onlineMenu').classList.add('hidden'); el('joinInput').classList.add('hidden'); el('hostInfo').classList.add('hidden');
+  el('deployCard').classList.remove('hidden'); el('startCard').classList.remove('hidden');
+  el('startBtn').disabled=false; el('startBtn').textContent='Ready';
+  netStatus('Rematch! You are '+(myColor==='w'?'White':'Black')+' this time. Deploy and hit Ready.');
+  renderPalette(); renderSetup(); woolgarShow();
+}
+
+/* ----- disconnect grace + auto-reconnect ----- */
+let netLost=false, graceTimer=null, rejoinTimer=null;
+function showBanner(t){ const b=el('netBanner'); b.classList.remove('hidden'); el('netBannerText').textContent=t; }
+function hideBanner(){ el('netBanner').classList.add('hidden'); }
+function clearNetTimers(){ if(graceTimer){clearInterval(graceTimer);graceTimer=null;} if(rejoinTimer){clearInterval(rejoinTimer);rejoinTimer=null;} }
+function handleReconnected(){
+  clearNetTimers(); netLost=false;
+  if(iAmHost){ hideBanner(); net.send({t:'sync', s:S, gt:gameType}); }
+  else showBanner('Reconnected — resyncing…');   // wait for the host's sync
+}
+function applySync(m){
+  if(m.s){ S=m.s; if(m.gt) gameType=m.gt; }
+  clearNetTimers(); netLost=false; hideBanner();
+  if(phase==='play'){ renderPlay(); if(S.mustPlace===myColor) beginHumanPlace(); if(S.over) showOver(); }
 }
 function applyRemoteAct(m){
   const p=at(S,m.from.f,m.from.r,m.from.c);
@@ -2408,11 +2513,37 @@ function applyRemoteEnd(){
   if(S.over){ showOver(); }
 }
 function onDisconnect(){
-  if(phase==='play' && !S.over){ S.over={winner:myColor,reason:'disconnect'}; renderPlay(); showOver(); }
-  else if(phase!=='play'){ netStatus('Disconnected — try again.'); }
-  netMode=false;
+  if(phase==='play' && !S.over){
+    if(netLost) return;                       // close+error can both fire
+    netLost=true;
+    let left=45;
+    showBanner('Opponent connection lost — waiting for them to return… '+left+'s');
+    graceTimer=setInterval(()=>{
+      left--;
+      if(left<=0){
+        clearNetTimers(); hideBanner(); netLost=false; netMode=false;
+        if(!S.over){ S.over={winner:myColor,reason:'disconnect'}; renderPlay(); showOver(); }
+      } else showBanner('Opponent connection lost — waiting for them to return… '+left+'s');
+    },1000);
+    if(!iAmHost && net && net.peer){
+      // the guest actively re-dials the host's room; the host just keeps listening
+      rejoinTimer=setInterval(()=>{
+        try{
+          if(net.peer.destroyed) return;
+          if(net.peer.disconnected) net.peer.reconnect();
+          const c=net.peer.connect('TFC-'+roomCode,{reliable:true});
+          if(c) bindConn(c);
+        }catch(e){}
+      },4000);
+    }
+  }
+  else if(phase!=='play'){ netStatus('Disconnected — try again.'); netMode=false; }
 }
 el('modeToggle').querySelectorAll('.segbtn').forEach(b=>{ b.onclick=()=>setMode(b.dataset.m); });
+el('overRematch').onclick=offerRematch;
+el('chatSend').onclick=chatSendNow;
+el('chatIn').addEventListener('keydown',e=>{ if(e.key==='Enter') chatSendNow(); });
+el('chatHead').onclick=()=>{ const box=el('chatBox'); box.classList.toggle('min'); if(!box.classList.contains('min')){ chatUnseen=0; el('chatUnread').classList.add('hidden'); el('chatLog').scrollTop=el('chatLog').scrollHeight; } };
 el('hostBtn').onclick=hostGame;
 el('joinBtn').onclick=()=>{ el('onlineMenu').classList.add('hidden'); el('joinInput').classList.remove('hidden'); el('codeInput').focus(); };
 el('joinGoBtn').onclick=()=>joinGame(el('codeInput').value);

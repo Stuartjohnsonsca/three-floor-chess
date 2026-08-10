@@ -355,6 +355,14 @@ keep a single-file build target — offline-in-one-file is a core property.
 
 ## 18. Changelog
 
+- **2026-08-10 (online v2)** — Backlog #3 plus resilience: in-game chat (collapsible
+  widget, XSS-safe, unread badge), rematch over the same connection with colors
+  swapped (offer/accept via `{t:'rematch'}`), and disconnect handling rebuilt: a
+  drop mid-game now freezes input and shows a 45 s countdown banner instead of
+  instantly ending the game; the guest auto-redials the host's room every 4 s and
+  on reconnect the host sends an authoritative `{t:'sync'}` state snapshot. Verified
+  headlessly via the `t_fakeNet` hook (chat send/receive + XSS, grace banner,
+  sync round-trip, rematch color-swap back to deploy).
 - **2026-08-10** — Variant AI initiative overhaul (backlog #1): evalState gains
   progressive pawn-advancement (PADV table), a space term, officer proximity-to-
   generals/king hunting terms, all scaled by an urgency factor that grows with the
