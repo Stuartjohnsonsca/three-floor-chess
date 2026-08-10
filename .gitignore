@@ -8,3 +8,9 @@ Thumbs.db
 mobile/android/
 mobile/ios/
 mobile/www/
+
+# signing material — never commit
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
