@@ -355,6 +355,13 @@ keep a single-file build target — offline-in-one-file is a core property.
 
 ## 18. Changelog
 
+- **2026-08-12 (mobile UX)** — Phone polish pass: boards responsive ≤640 px
+  (44 px-class squares via `min(92vw,344px)` + aspect-ratio, was 29×21 in the
+  scaled Tower view), Stack layout is the phone default at boot/reset (Tower still
+  selectable), 40 px+ buttons, `touch-action:manipulation` everywhere tappable,
+  safe-area insets for the banner/chat, `viewport-fit=cover`. Desktop ≥640 px
+  completely unchanged. Also `tools/serve.ps1`: receive/send timeouts so a
+  half-open connection can't wedge the serial accept loop.
 - **2026-08-10 (online v2)** — Backlog #3 plus resilience: in-game chat (collapsible
   widget, XSS-safe, unread badge), rematch over the same connection with colors
   swapped (offer/accept via `{t:'rematch'}`), and disconnect handling rebuilt: a

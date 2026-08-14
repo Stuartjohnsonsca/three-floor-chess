@@ -23,6 +23,9 @@ Write-Host "Serving $Root at http://localhost:$Port/ (Ctrl+C to stop)"
 while ($true) {
     $client = $listener.AcceptTcpClient()
     try {
+        # a client that never sends a full request must not wedge the (serial) loop
+        $client.ReceiveTimeout = 3000
+        $client.SendTimeout = 5000
         $stream = $client.GetStream()
         $reader = [System.IO.StreamReader]::new($stream)
         $requestLine = $reader.ReadLine()

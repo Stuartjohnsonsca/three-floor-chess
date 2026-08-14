@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Three-Floor Chess</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0e1116">
@@ -466,6 +466,21 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 #chatBox.min #chatLog,#chatBox.min #chatRow{display:none}
 #netBanner{position:fixed;top:0;left:0;right:0;z-index:70;background:#5a3a10;color:#ffd9a0;border-bottom:1px solid #8a5a1a;padding:8px 14px;text-align:center;font-size:13.5px}
 @media (max-width:640px){ #chatBox{width:calc(100vw - 28px)} }
+/* phone layer: tappable boards, bigger targets */
+.sq,.btn,.segbtn,.ptile,.botcard,.slot,.acctchip{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+@media (max-width:640px){
+  .board{width:min(92vw,344px);height:auto;aspect-ratio:1/1}
+  .sq{font-size:clamp(22px,8vw,30px)}
+  .pc.gen{font-size:clamp(19px,7vw,27px)}
+  .btn,.segbtn{min-height:40px}
+  .ptile{padding:11px 6px}
+  .side{max-width:none}
+}
+@supports (padding: env(safe-area-inset-top)){
+  #netBanner{padding-top:calc(8px + env(safe-area-inset-top))}
+  #chatBox{bottom:calc(14px + env(safe-area-inset-bottom))}
+  body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+}
 </style>
 <div id="netBanner" class="hidden"><span id="netBannerText"></span></div>
 <div id="chatBox" class="hidden">
@@ -2059,7 +2074,7 @@ function resetAll(){
   el('slots').style.display=''; el('reserve').style.display=''; el('endTurnBtn').style.display='';
   el('viewToggle').parentElement.classList.remove('hidden'); el('howCard').classList.remove('hidden');
   if(typeof setGameType==='function') setGameType('open');
-  exit3D(); layout='iso'; applyLayout(); syncLayoutToggles('iso');
+  exit3D(); layout=isPhone()?'stack':'iso'; applyLayout(); syncLayoutToggles(layout);
   el('playView').classList.add('hidden'); el('setupView').classList.remove('hidden');
   el('overModal').classList.remove('show');
   setMode('ai');
@@ -2243,7 +2258,9 @@ function animate3D(){
   if(three&&three.glows) for(const g of three.glows) g.material.opacity=op;
   three.renderer.render(three.scene,three.camera);
 }
-let layout='iso'; // 'row' | 'stack' | 'iso'  (flat board arrangements)
+// phones default to the flat Stack view — the tilted Tower shrinks squares below tappable size
+const isPhone = ()=> matchMedia('(max-width:640px)').matches;
+let layout=isPhone()?'stack':'iso'; // 'row' | 'stack' | 'iso'  (flat board arrangements)
 function applyLayout(){
   for(const id of ['setupFloors','playFloors']){ const c=el(id); if(c){ c.classList.remove('lay-row','lay-stack','lay-iso'); c.classList.add('lay-'+layout); } }
 }
@@ -2251,6 +2268,7 @@ function syncLayoutToggles(sel){
   ['setupLayoutToggle','viewToggle'].forEach(id=>{ const t=el(id); if(t) t.querySelectorAll('.segbtn').forEach(x=>x.classList.toggle('sel',x.dataset.v===sel)); });
 }
 function chooseLayout(v){ layout=v; applyLayout(); syncLayoutToggles(v); }
+applyLayout(); syncLayoutToggles(layout);   // apply the (possibly phone-adjusted) default at boot
 function enter3D(){
   syncLayoutToggles('3d');
   const inPlay = phase==='play';
