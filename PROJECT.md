@@ -355,6 +355,12 @@ keep a single-file build target — offline-in-one-file is a core property.
 
 ## 18. Changelog
 
+- **2026-08-12 (clock + privacy)** — Per-turn clock for online games: host picks
+  Off/30s/60s/2m in the online panel (setting rides the `{t:'deploy'}` message);
+  countdown pill beside the turn indicator; the player to move self-flags on expiry
+  (`{t:'flag'}`, loss by timeout), clock pauses during reconnect grace and remote
+  king placement, setting survives rematches. Plus `privacy.html` (store
+  requirement) linked from the rules modal and copied into the native app bundle.
 - **2026-08-12 (mobile UX)** — Phone polish pass: boards responsive ≤640 px
   (44 px-class squares via `min(92vw,344px)` + aspect-ratio, was 29×21 in the
   scaled Tower view), Stack layout is the phone default at boot/reset (Tower still

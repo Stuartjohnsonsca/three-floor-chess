@@ -279,6 +279,16 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
             <div class="d" data-s="rand"><b>Random</b><small>50 / 50</small></div>
           </div>
           <div id="onlinePanel" class="hidden" style="margin-top:10px">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <span class="hint" style="white-space:nowrap">Turn timer</span>
+              <div class="seg" id="clockSel">
+                <button class="segbtn sel" data-c="0">Off</button>
+                <button class="segbtn" data-c="30">30s</button>
+                <button class="segbtn" data-c="60">60s</button>
+                <button class="segbtn" data-c="120">2m</button>
+              </div>
+            </div>
+            <div class="hint" style="margin-bottom:8px;font-size:11px">The host’s timer setting applies to both players.</div>
             <div id="onlineMenu" style="display:flex;gap:8px">
               <button class="btn ghost" id="hostBtn" style="flex:1">Host game</button>
               <button class="btn ghost" id="joinBtn" style="flex:1">Join game</button>
@@ -360,6 +370,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
           <div class="oppbot hidden" id="oppBot"></div>
           <div class="statusline">
             <span class="turnpill" id="turnPill"></span>
+            <span class="turnpill hidden" id="clockPill" style="margin-left:10px;font-variant-numeric:tabular-nums"></span>
           </div>
           <div class="msg" id="playMsg"></div>
           <div class="actionslots" id="slots">
@@ -517,6 +528,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       <p style="color:var(--ink)"><b>Deployment.</b> 90 points. Values: pawn 1, knight 3, bishop 3, rook 5, queen 9, generals free. Every floor must hold at least 3 pawns. Officers &amp; generals deploy on your back two ranks; extra pawns may start further forward (up to the halfway line) but forfeit the two-square first move and en passant.</p>
       <p style="color:var(--ink)"><b>Generals &amp; the hidden king.</b> You field 3 generals and keep your king off the board. While all three generals live, your king can't be touched. The moment your <b>first</b> general is captured, your king must enter — anywhere in your own half, on any floor — and is a normal, checkmate-able king from then on. Generals move like a king but have no royal immunity: they can sit in danger and capture defended pieces.</p>
       <p style="color:var(--ink)"><b>Winning.</b> Checkmate the enemy king (only possible once it's been forced out), or wipe out the enemy army.</p>
+      <p style="margin-top:10px"><a href="privacy.html" target="_blank" style="color:var(--accent);font-size:13px">Privacy policy</a></p>
       <div class="flagnote">
         <b>Prototype assumptions</b> (open rules I locked in — tell Stuart-you-later to change any): the king climbs like any piece; every piece may climb; a piece that has acted can't act again the same turn; per-floor caps are 1 queen / 2 rooks / 2 bishops / 2 knights; checkmate is detected as “in check with no escaping action.”
       </div>
@@ -1717,6 +1729,7 @@ function humanEndTurn(){
   if(netMode && net) net.send({t:'end'});
   renderPlay();
   if(S.over){ showOver(); return; }
+  if(netMode) startTurnClock();
   if(!netMode) setTimeout(aiTurn,350);
 }
 
@@ -1959,6 +1972,7 @@ function showOver(){
   let title, text;
   if(o.reason==='stalemate'||o.reason==='draw'||o.reason==='blockade'){ title='Draw'; text=o.reason==='blockade'?'Blockade — neither side can make progress. It’s a draw.':(o.reason==='stalemate'?'No legal moves — stalemate.':'No decisive progress — the game is a draw.'); }
   else if(o.reason==='disconnect'){ title='Opponent left'; text='Your opponent disconnected. You can start a new game.'; }
+  else if(o.reason==='timeout'){ const youWon=o.winner===myColor; title=youWon?'Opponent flagged — you win!':'Out of time'; text=youWon?'Your opponent ran out of time.':'Your clock ran out. Rematch?'; }
   else if(o.reason==='race'){ const youWon=o.winner===myColor; title=youWon?'Promoted — you win the race!':'Outrun — you lose the race'; text=youWon?'Your pawn reached the far rank first. Nicely run.':'The bot promoted first. Rematch?'; }
   else{
     const youWon=o.winner===myColor;
@@ -1968,6 +1982,7 @@ function showOver(){
     text=youWon?'You ran down the enemy king across the floors. Nicely done.':'Your king was cornered. Rematch?';
   }
   el('overTitle').textContent=title; el('overText').textContent=text;
+  try{ stopTurnClock(); }catch(e){}
   el('overRematch').classList.toggle('hidden', !connAlive());
   el('overRematch').disabled=false;
   updateRematchUI();
@@ -2064,6 +2079,7 @@ if(el('sideSel')) el('sideSel').querySelectorAll('.d').forEach(d=>{ d.onclick=()
 function resetAll(){
   if(netMode && net){ try{ net.send({t:'resign'}); }catch(e){} try{ net.peer&&net.peer.destroy(); }catch(e){} }
   clearNetTimers(); netLost=false; hideBanner(); chatShow(false);
+  stopTurnClock(); clockSetting=0;
   rematchMine=false; rematchTheirs=false; el('rematchMsg').classList.add('hidden');
   S=newState(); uid=1; phase='setup'; selected=null; legalCache=[]; selPaletteType=null; placingHuman=false; pendingAfterPlace=null;
   netMode=false; net=null; awaitingRemote=false; iAmHost=false; iSentDeploy=false; oppDeploy=null; roomCode=null; myColor='w';
@@ -2411,8 +2427,9 @@ function onConnected(){
 function onReady(){
   if(!armyReady()) return;
   iSentDeploy=true;
+  if(iAmHost) clockSetting=clockChoice;
   const mine=S.pieces.filter(p=>p.color===myColor).map(p=>({type:p.type,floor:p.floor,r:p.r,c:p.c,fwd:!!p.fwd}));
-  net.send({t:'deploy',pieces:mine,gameType});
+  net.send({t:'deploy',pieces:mine,gameType,clock:(iAmHost?clockChoice:undefined)});
   el('startBtn').disabled=true; el('startBtn').textContent='Waiting…';
   netStatus('Waiting for your opponent to be ready…');
   if(oppDeploy) startOnlineGame();
@@ -2420,6 +2437,7 @@ function onReady(){
 function startOnlineGame(){
   woolgarVanish();
   chatShow(true);
+  setTimeout(startTurnClock,0);   // S.turn is set just below; start White's clock
   for(const q of oppDeploy){ const p=mk(q.type,oppOf(),q.floor,q.r,q.c); p.fwd=!!q.fwd; S.pieces.push(p); }
   S.turn='w'; phase='play';
   el('setupView').classList.add('hidden'); el('playView').classList.remove('hidden');
@@ -2430,11 +2448,12 @@ function startOnlineGame(){
 }
 function onNetMsg(m){
   if(!m||!m.t) return;
-  if(m.t==='deploy'){ oppDeploy=m.pieces; if(!iAmHost && m.gameType) gameType=m.gameType; if(iSentDeploy) startOnlineGame(); else netStatus('Opponent is ready — deploy your army and hit Ready.'); }
+  if(m.t==='deploy'){ oppDeploy=m.pieces; if(!iAmHost && m.gameType) gameType=m.gameType; if(!iAmHost && m.clock!=null) clockSetting=m.clock; if(iSentDeploy) startOnlineGame(); else netStatus('Opponent is ready — deploy your army and hit Ready.'); }
   else if(m.t==='act'){ applyRemoteAct(m); }
   else if(m.t==='place'){ applyRemotePlace(m); }
   else if(m.t==='end'){ applyRemoteEnd(); }
   else if(m.t==='resign'){ if(!S.over){ S.over={winner:myColor,reason:'resign'}; renderPlay(); showOver(); } }
+  else if(m.t==='flag'){ stopTurnClock(); if(!S.over){ S.over={winner:myColor,reason:'timeout'}; renderPlay(); showOver(); } }
   else if(m.t==='chat'){ chatAdd(false, m.x); }
   else if(m.t==='rematch'){ rematchTheirs=true; updateRematchUI(); maybeStartRematch(); }
   else if(m.t==='sync'){ applySync(m); }
@@ -2479,6 +2498,7 @@ function offerRematch(){
 function maybeStartRematch(){
   if(!(rematchMine && rematchTheirs)) return;
   rematchMine=false; rematchTheirs=false;
+  stopTurnClock();                             // clockSetting survives into the rematch
   myColor=other(myColor);                      // swap sides
   S=newState(); iSentDeploy=false; oppDeploy=null;
   selected=null; legalCache=[]; placingHuman=false; awaitingRemote=false; phase='setup';
@@ -2492,6 +2512,34 @@ function maybeStartRematch(){
   netStatus('Rematch! You are '+(myColor==='w'?'White':'Black')+' this time. Deploy and hit Ready.');
   renderPalette(); renderSetup(); woolgarShow();
 }
+
+/* ----- per-turn clock (online only; the host's setting rules) ----- */
+let clockChoice=0, clockSetting=0, clockLeft=0, clockTimer=null;
+function fmtClock(s){ return s>=60 ? Math.floor(s/60)+':'+String(s%60).padStart(2,'0') : s+'s'; }
+function stopTurnClock(){ if(clockTimer){clearInterval(clockTimer);clockTimer=null;} const p=el('clockPill'); if(p) p.classList.add('hidden'); }
+function startTurnClock(){
+  stopTurnClock();
+  if(!netMode || !clockSetting || S.over) return;
+  clockLeft=clockSetting;
+  const pill=el('clockPill'); pill.classList.remove('hidden');
+  const paint=()=>{ pill.textContent='⏱ '+fmtClock(clockLeft); pill.style.color=clockLeft<=10?'var(--cap)':''; };
+  paint();
+  clockTimer=setInterval(()=>{
+    if(netLost || awaitingRemote) return;   // frozen while reconnecting / opponent places king
+    clockLeft--;
+    if(clockLeft<=0){
+      stopTurnClock();
+      if(S.turn===myColor && !S.over){      // only the player to move flags themself
+        S.over={winner:other(myColor),reason:'timeout'};
+        try{ net.send({t:'flag'}); }catch(e){}
+        renderPlay(); showOver();
+      }
+    } else paint();
+  },1000);
+}
+el('clockSel').querySelectorAll('.segbtn').forEach(b=>{
+  b.onclick=()=>{ clockChoice=+b.dataset.c; el('clockSel').querySelectorAll('.segbtn').forEach(x=>x.classList.toggle('sel',x===b)); };
+});
 
 /* ----- disconnect grace + auto-reconnect ----- */
 let netLost=false, graceTimer=null, rejoinTimer=null;
@@ -2528,7 +2576,8 @@ function applyRemotePlace(m){
 }
 function applyRemoteEnd(){
   awaitingRemote=false; endTurn(S); renderPlay();
-  if(S.over){ showOver(); }
+  if(S.over){ showOver(); return; }
+  startTurnClock();
 }
 function onDisconnect(){
   if(phase==='play' && !S.over){

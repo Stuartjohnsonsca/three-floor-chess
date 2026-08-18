@@ -10,6 +10,7 @@ fs.rmSync(www, { recursive: true, force: true });
 fs.mkdirSync(www, { recursive: true });
 
 fs.copyFileSync(path.join(root, 'three-floor-chess.html'), path.join(www, 'index.html'));
+fs.copyFileSync(path.join(root, 'privacy.html'), path.join(www, 'privacy.html'));
 fs.copyFileSync(path.join(root, 'manifest.webmanifest'), path.join(www, 'manifest.webmanifest'));
 fs.cpSync(path.join(root, 'icons'), path.join(www, 'icons'), { recursive: true });
 // Note: sw.js is intentionally NOT copied — Capacitor ships assets locally,
