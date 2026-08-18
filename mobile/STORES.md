@@ -15,6 +15,41 @@ CI (`.github/workflows/build-mobile.yml`) already builds both platforms on every
 - [ ] Play internal-testing track upload → production
 - [ ] TestFlight upload → App Store review
 
+## TestFlight — exact path (CI is ready; builds pin Xcode 26+)
+
+Owner steps, in order:
+
+1. **Enroll**: https://developer.apple.com/programs/enroll/ — Apple ID with 2FA,
+   $99/year, identity verification can take up to 48 h.
+2. **Register the bundle ID**: developer.apple.com/account → Certificates, IDs &
+   Profiles → Identifiers → + → App ID → `com.threefloorchess.app` (no special
+   capabilities needed).
+3. **Create the app record**: App Store Connect → Apps → + New App → iOS,
+   name "Three-Floor Chess", the bundle ID above, any SKU (e.g. `tfc-001`).
+4. **Make an API key**: App Store Connect → Users and Access → Integrations →
+   App Store Connect API → Team Keys → Generate (role: App Manager).
+   Save the **Key ID**, the **Issuer ID**, and download the **.p8** file
+   (downloadable exactly once).
+5. **Add four repo secrets** (GitHub → repo → Settings → Secrets and variables →
+   Actions → New repository secret), or hand the four values to Claude to set
+   via `gh secret set`:
+   - `APPLE_TEAM_ID` — 10-char Team ID (Membership page)
+   - `ASC_KEY_ID` — from step 4
+   - `ASC_ISSUER_ID` — from step 4
+   - `ASC_KEY_P8` — the .p8 file base64-encoded
+     (`base64 -i AuthKey_XXXX.p8` on Mac, `[Convert]::ToBase64String([IO.File]::ReadAllBytes('AuthKey_XXXX.p8'))` on Windows)
+6. **Run the workflow**: Actions tab → **TestFlight** → Run workflow (pick the
+   marketing version, default 1.0.0). It archives with automatic cloud signing
+   and uploads straight to App Store Connect.
+7. **Distribute**: after ~5–15 min of Apple-side processing, App Store Connect →
+   your app → TestFlight tab → add yourself/friends as **internal testers**
+   (up to 100, instant). Testers install Apple's TestFlight app on their
+   iPhone, accept the email invite, and install the game. External testers
+   (up to 10 000, public link) need a one-time short Beta App Review first.
+
+Export compliance is pre-answered in the build (standard HTTPS/WebRTC crypto
+only → exempt), so uploads go straight to "Ready to Test".
+
 ## Owner actions (only you can do these)
 
 1. **Google Play Console** — https://play.google.com/console/signup
